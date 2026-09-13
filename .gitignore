@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+*.pyc
+data/cache/
+data/edinet_key_fsa.txt
+output/
+.pytest_cache/
+site/

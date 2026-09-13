@@ -1,0 +1,13 @@
+pandas>=2.2
+numpy>=1.26
+yfinance>=0.2.50
+networkx>=3.2
+scipy>=1.12
+statsmodels>=0.14
+fastapi>=0.110
+uvicorn[standard]>=0.29
+requests>=2.31
+pytest>=8.0
+# 任意: 英語テキストで FinBERT を使う場合
+# transformers>=4.40
+# torch>=2.2

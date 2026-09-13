@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RippleDrift</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Ccircle cx=%2716%27 cy=%2716%27 r=%2711%27 fill=%27none%27 stroke=%27%231f3b6e%27 stroke-width=%275%27 stroke-dasharray=%2752 18%27 stroke-linecap=%27round%27 transform=%27rotate(-90 16 16)%27/%3E%3C/svg%3E">
+<script>(function(){try{var m=new URLSearchParams(location.search).get("theme");if(m){localStorage.setItem("ripple-theme",m);}var t=localStorage.getItem("ripple-theme");if(t==="light"||t==="dark"){document.documentElement.setAttribute("data-theme",t);}}catch(e){}})();</script>
+<link rel="stylesheet" href="static/styles.css?v=6">
+</head>
+<body>
+
+<header class="topbar" id="topbar">
+  <div class="topbar-inner">
+    <div>
+      <div class="brand-name">RippleDrift</div>
+      <div class="brand-sub" id="asof"></div>
+    </div>
+    <div class="topbar-actions">
+      <span class="pill gray" id="fresh-pill" hidden></span>
+      <button class="icon-btn" id="btn-theme" type="button" data-mode="auto" aria-label="表示テーマを切り替え" title="テーマ: システム設定に従う">
+        <svg class="ico-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" stroke="none"/></svg>
+        <svg class="ico-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+        <svg class="ico-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+      </button>
+      <button class="icon-btn" id="btn-refresh" type="button" aria-label="データを更新" title="データを更新">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="progress" id="progress" hidden><i id="progress-bar"></i></div>
+</header>
+
+<main class="page" id="page">
+  <div id="status-banner" hidden></div>
+
+  <!-- A. 今やること -->
+  <section class="card" id="sec-actions">
+    <div class="card-head"><h2>今やること</h2><span class="card-sub" id="actions-sub"></span></div>
+    <div class="quick" role="group" aria-label="クイック操作">
+      <button type="button" data-act="refresh"><span class="qicon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></span><span class="qlabel">更新する</span></button>
+      <button type="button" data-act="go-candidates"><span class="qicon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/></svg></span><span class="qlabel">候補を見る</span></button>
+      <button type="button" data-act="go-text"><span class="qicon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></span><span class="qlabel">テキスト登録</span></button>
+      <button type="button" data-act="go-evidence"><span class="qicon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="m7 15 4-5 3 3 5-7"/></svg></span><span class="qlabel">根拠を見る</span></button>
+    </div>
+    <ol class="steps" id="steps"></ol>
+    <div class="timeline-note" id="upcoming" hidden></div>
+  </section>
+
+  <!-- A2. ひとつ買うなら -->
+  <section class="card card-pick" id="sec-pick">
+    <div class="card-head"><h2>ひとつ買うなら</h2><span class="card-sub">候補の中から、ルールに最も合う1銘柄を機械的に選びます</span></div>
+    <div id="pick"></div>
+  </section>
+
+  <!-- B. ルール -->
+  <section class="card" id="sec-rules">
+    <div class="card-head"><h2>ルール</h2><span class="card-sub">どう選び、いつ入り、いつ出るか</span></div>
+    <div class="rules-grid">
+      <div class="rule">
+        <svg class="ring on" width="36" height="36" viewBox="0 0 40 40" aria-hidden="true"><circle class="track" cx="20" cy="20" r="16" stroke-width="5"/><circle class="fill" cx="20" cy="20" r="16" stroke-width="5" stroke-dasharray="100.5" stroke-dashoffset="20"/></svg>
+        <h3>① 決算サプライズ</h3>
+        <p>決算の利益が、事前に専門家が予想していた数字をどれだけ上回ったか。良い驚きのあと、株価は数週間〜2か月かけて<strong>じわじわ上がり続ける</strong>傾向が知られています（決算後ドリフト）。</p>
+        <p class="paper">Bernard &amp; Thomas (1989) / Meursault et al. (2023)</p>
+      </div>
+      <div class="rule">
+        <svg class="ring on" width="36" height="36" viewBox="0 0 40 40" aria-hidden="true"><circle class="track" cx="20" cy="20" r="16" stroke-width="5"/><circle class="fill" cx="20" cy="20" r="16" stroke-width="5" stroke-dasharray="100.5" stroke-dashoffset="35"/></svg>
+        <h3>② 経営陣の自信</h3>
+        <p>決算説明会や決算短信の<strong>「言葉」</strong>を点数化。前向きで言い切る表現が多い説明ほど、その後の株価が良い傾向があります。数字が良くても語り口が弱気なら割り引きます。</p>
+        <p class="paper">Meursault, Liang, Routledge &amp; Scanlon (2023) "PEAD.txt"</p>
+      </div>
+      <div class="rule">
+        <svg class="ring on" width="36" height="36" viewBox="0 0 40 40" aria-hidden="true"><circle class="track" cx="20" cy="20" r="16" stroke-width="5"/><circle class="fill" cx="20" cy="20" r="16" stroke-width="5" stroke-dasharray="100.5" stroke-dashoffset="28"/></svg>
+        <h3>③ 取引先の追い風</h3>
+        <p>大口の取引先（親会社・主要顧客）の株価が先に上がると、<strong>約1か月遅れて</strong>下請け・素材メーカーの株価も追いつく傾向があります。「取引先は上がったのに、この会社はまだ」という銘柄ほど高得点です。</p>
+        <p class="paper">Cohen &amp; Frazzini (2008) "Economic Links and Predictable Returns"</p>
+      </div>
+    </div>
+    <ul class="rule-list">
+      <li><b>選ぶ</b><span>3つの点数を合計した「合成スコア」の上位5%が候補。<b>3つ点灯 ＞ 2つ点灯 ＞ 1つ点灯</b>の順に優先し、1つも点灯していない銘柄は選ばない（70点以上を「点灯」と呼ぶ）。</span></li>
+      <li><b>入る</b><span>候補を確認した<b>翌営業日の寄り付き</b>が目安。決算発表から日が浅いほど良く、<b>45営業日</b>を過ぎた銘柄は見送る。</span></li>
+      <li><b>持つ</b><span><b>60営業日（約3か月）</b>。研究で報告されたドリフトはこの期間で頭打ちになる。</span></li>
+      <li><b>出る</b><span>次のどれかが先に来たら手じまい: ①60営業日が経過 ②次の決算発表の前日 ③更新後にスコアが50未満に低下 ④取引先の株価が急落。</span></li>
+      <li><b>やらない</b><span>1銘柄に集中しない（研究の効果は複数銘柄の平均）。損切りの幅（例: 買値から−8%）は買う前に決めておく。このアプリは投資助言ではなく、最終判断は自分で行う。</span></li>
+    </ul>
+    <details class="expert">
+      <summary>もっと詳しく（専門家向けの定義）</summary>
+      <h4>Ring A — 標準化予想外利益（SUE）</h4>
+      <div class="formula">SUE_i,q = (EPS_actual − EPS_consensus) / P_{i,t0−1}          … アナリスト基準（価格スケーリング）
+SUE^SRW_i,q = (ΔEPS_q − mean ΔEPS_{q−1..q−8}) / std ΔEPS_{q−1..q−8},  ΔEPS_q = EPS_q − EPS_{q−4}
+→ 四半期ごとの横断面パーセンタイルランクへ落とし、十分位（decile）・三分位（tercile）に分割。</div>
+      <p>day 0 は「市場が最初に反応できる営業日」（15:00 JST 以降の発表は翌営業日）。Ring A は直近イベントのランクを 60 営業日で線形減衰させて 0–100 に写像します。</p>
+      <h4>Ring B — テキスト由来サプライズ（SUE.txt）</h4>
+      <div class="formula">φ(text) = [tone, certainty, forward, numeric, finbert]
+  tone = (pos − neg)/(pos + neg + 1),  certainty = (certain − uncertain)/(certain + uncertain + 1)
+SUE.txt = 2·P̂(surprise &gt; 0 | φ) − 1 ∈ [−1, 1]     … L2 ロジスティック回帰（Newton–Raphson）
+（ラベル付きテキスト &lt; 30 件のときは事前重みによる線形合成を tanh 変換）</div>
+      <p>日本語は Loughran–McDonald 型の金融極性辞書を日本語開示語彙へ写像したもの、英語は transformers があれば FinBERT（ProsusAI/finbert）の P(pos)−P(neg) を特徴量に追加します。</p>
+      <h4>Ring C — 顧客モメンタムとリード・ラグ</h4>
+      <div class="formula">CM_i,t = Σ_j w̃_ij · r̃_j,t          w̃: 売上依存度を正規化した顧客ポートフォリオ重み、r̃: 市場調整リターン
+ρ̄(k) = Σ_(i→j) w_ij · corr(r_i,t, r_j,t−k) / Σ w_ij,   k* = argmax_{k≥1} ρ̄(k)   … 波及ラグ
+r_i,t+1 = α_t + β_t·CM_i,t + γ_t·r_i,t + δ_t·MOM_i,(t−12,t−2) + ε      … Fama–MacBeth, Newey–West t
+gap_i = z(CM_i) − z(r̃_i)                                            … 過小反応ギャップ
+Ring C = 100·(0.6·pct(CM) + 0.4·pct(gap))</div>
+      <h4>PEAD イベントスタディと合成</h4>
+      <div class="formula">CAR_i[+2,+61) = Σ (r_i,τ − r_m,τ)      市場調整（TOPIX 連動 ETF 1306）、60 営業日
+条件表: SUE 三分位 × SUE.txt 三分位 の平均 CAR・勝率・n。「最良条件」= n ≥ 20 で平均 CAR 最大のセル
+合成 = Σ w_k·Ring_k / Σ w_k（利用可能リングのみ、w = 0.40 / 0.25 / 0.35）+ 3 リング全達成ボーナス 8
+候補 = 合成スコア上位 5%（最低 5 銘柄）</div>
+    </details>
+  </section>
+
+  <!-- C. きょうの候補（サマリー） -->
+  <section class="card" id="sec-summary">
+    <div class="card-head"><h2>きょうの候補</h2><span class="card-sub" id="summary-sub"></span></div>
+    <div class="hero" id="hero"></div>
+    <p class="caption" id="summary-caption"></p>
+  </section>
+
+  <!-- D. 候補銘柄 -->
+  <section class="card" id="sec-candidates">
+    <div class="card-head"><h2>候補銘柄</h2><span class="card-sub">上位5%。行を押すと理由・グラフ・行動プランが開きます</span></div>
+    <label class="toggle"><input type="checkbox" id="toggle-lowvol"><span>値動きの小さい銘柄（年率ボラ下位1/3）を除く</span></label>
+    <ul class="rows" id="candidates"></ul>
+    <div style="margin-top:14px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+      <span class="small muted" id="cand-note"></span>
+      <button class="btn btn-ghost btn-sm" id="btn-all" type="button" aria-expanded="false">全銘柄のランキングを見る</button>
+    </div>
+    <div id="all-table" hidden style="margin-top:12px">
+      <input type="search" id="all-search" class="search" placeholder="銘柄名・コードで絞り込み（例: 半導体、6758）" aria-label="銘柄を検索">
+      <div id="all-table-body"></div>
+    </div>
+  </section>
+
+  <!-- E. 検証 -->
+  <section class="card" id="sec-backtest">
+    <div class="card-head"><h2>過去データで確かめる</h2><span class="card-sub">ルールの根拠</span></div>
+    <div class="chart-block" style="margin-top:0">
+      <div class="sub-title">決算サプライズ度別・発表後60営業日の平均ドリフト</div>
+      <div class="legend" id="legend-decile"></div>
+      <div class="chart chart-tall" id="chart-decile"></div>
+      <p class="caption" id="caption-decile"></p>
+    </div>
+    <div class="chart-block">
+      <div class="sub-title" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <span>取引先の値動きが、何か月遅れでサプライヤーに伝わるか（波及ラグ）</span>
+        <span class="pill-toggle" role="group" aria-label="頻度">
+          <button type="button" data-freq="monthly" aria-pressed="true">月次</button>
+          <button type="button" data-freq="weekly" aria-pressed="false">週次</button>
+        </span>
+      </div>
+      <div class="chart" id="chart-leadlag"></div>
+      <p class="caption" id="caption-leadlag"></p>
+    </div>
+    <div class="chart-block">
+      <div class="sub-title">どの組み合わせで最もドリフトが強かったか（条件表）</div>
+      <div class="cond-wrap"><div class="cond" id="cond-table"></div></div>
+      <p class="caption" id="caption-cond"></p>
+    </div>
+    <details class="expert" id="expert-stats">
+      <summary>推定値の詳細（専門家向け）</summary>
+      <div id="expert-stats-body"></div>
+    </details>
+  </section>
+
+  <!-- F. サプライチェーン図 -->
+  <section class="card" id="sec-graph">
+    <div class="card-head"><h2>サプライチェーン図</h2><span class="card-sub">矢印は サプライヤー → 取引先</span></div>
+    <div class="chart" id="chart-graph" style="height:460px"></div>
+    <p class="caption">線の太さは売上依存度、青い丸は今回の候補銘柄です。ドラッグで動かせます。</p>
+  </section>
+
+  <!-- G. データの状態 -->
+  <section class="card" id="sec-data">
+    <div class="card-head"><h2>データの状態</h2></div>
+    <div id="data-quality"></div>
+  </section>
+
+  <p class="disclaimer">このアプリは学術研究で報告された統計的な傾向をもとに、過去データから「上がりやすかった条件」に当てはまる銘柄を機械的に並べたものです。将来の値上がりを保証するものではなく、投資助言でもありません。株価・予想EPS・決算日は Yahoo Finance（yfinance）、有価証券報告書は EDINET（金融庁）から取得しています。投資判断はご自身の責任で行ってください。</p>
+</main>
+
+<script src="static/echarts.min.js"></script>
+<script src="static/app.js?v=6"></script>
+</body>
+</html>

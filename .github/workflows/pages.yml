@@ -1,0 +1,67 @@
+name: Build and deploy to GitHub Pages
+
+on:
+  schedule:
+    # 22:30 UTC = 翌 07:30 JST（月〜金の UTC 夜 = 火〜土の朝）。前営業日の終値で計算する
+    - cron: "30 22 * * 1-5"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["app/**", "web/**", "scripts/**", "data/transcripts/**", ".github/workflows/pages.yml", "requirements.txt"]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      # EDINET のキーは Secrets に置く（無ければ同梱の取引先データのみで動く）
+      EDINET_FSA_KEY: ${{ secrets.EDINET_FSA_KEY }}
+      RIPPLE_EARNINGS_TTL_HOURS: "72"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Restore data cache (earnings, universe, EDINET)
+        uses: actions/cache@v4
+        with:
+          path: data/cache
+          key: ripple-cache-${{ github.run_id }}
+          restore-keys: |
+            ripple-cache-
+
+      - name: Run pipeline
+        run: python -m app.pipeline
+
+      - name: Build static site
+        run: python scripts/build_site.py
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
