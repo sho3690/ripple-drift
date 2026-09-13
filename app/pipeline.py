@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 
 from . import config
-from .data import edinet, fundamentals, prices as pricemod, transcripts, universe_screen
+from .data import edinet, fundamentals, prices as pricemod, tdnet, transcripts, universe_screen
 from .models import pead, screen, sue, supply_chain as sc, text as textmod
 from .universe import EDGES, NODES, NODE_BY_SYMBOL, SEED_SYMBOLS, Edge, benchmarks_for, register_dynamic
 
@@ -240,6 +240,16 @@ def run(progress_cb=None, force: bool = False, use_edinet: bool = True) -> dict:
     events["sue_tercile"] = sue.to_tercile(events["sue_rank"])
 
     # 4. テキスト（SUE.txt） ----------------------------------------------
+    tdnet_stats = {"enabled": False}
+    if config.TDNET_ENABLED:
+        P("tdnet", 52, "TDnet から決算短信の定性的情報を取り込んでいます")
+        try:
+            tdnet_stats = tdnet.refresh_tdnet(set(screened), days_back=config.TDNET_DAYS_BACK,
+                                              progress=lambda n, sym, ds: P("tdnet", 52, f"{n} 件目 {sym} {ds}"))
+            tdnet_stats["enabled"] = True
+        except Exception as e:   # 取得失敗は致命的でない
+            tdnet_stats = {"enabled": True, "error": str(e)}
+            warnings.append(f"TDnet 取得でエラー: {e}")
     P("text", 55, "決算説明テキストを採点しています")
     texts = transcripts.load_transcripts()
     for sym, items in edinet_texts.items():
@@ -258,7 +268,9 @@ def run(progress_cb=None, force: bool = False, use_edinet: bool = True) -> dict:
     # 5. PEAD イベントスタディ -------------------------------------------
     P("pead", 65, "発表後ドリフト（CAR）を計測しています")
     events = pead.compute_car(events, adj_daily)
+    events = pead.add_pre_event_vol(events, daily)
     complete = events[events["car_complete"]]
+    dv_table = pead.decile_vol_table(complete)
     decile_paths = pead.mean_path_by_group(complete, "sue_decile")
     cond_table = pead.conditional_table(complete)
     best = pead.best_condition(cond_table)
@@ -297,6 +309,8 @@ def run(progress_cb=None, force: bool = False, use_edinet: bool = True) -> dict:
     scr = screen.build_screen(prices, adj_daily, events, latest_text, weights, screened, info, sparks, vol)
     for r in scr["rows"]:
         r["next_earnings"] = next_earnings.get(r["symbol"])
+    scr = screen.attach_expectations(scr, cond_table, dv_table, events.attrs.get("vol_terciles"),
+                                     as_of=str(pd.Timestamp(prices.index.max()).date()))
     candidates = {r["symbol"] for r in scr["rows"] if r["candidate"]}
 
     # 8. 出力 --------------------------------------------------------------
@@ -324,13 +338,14 @@ def run(progress_cb=None, force: bool = False, use_edinet: bool = True) -> dict:
             "n_events": n_events, "n_events_analyst_sue": n_an, "n_events_complete_car": int(len(complete)),
             "n_texts": sum(len(v) for v in texts.values()), "n_events_with_text": n_txt,
             "text_model": "logit" if model.fitted else "prior", "text_model_n": model.n_train,
-            "edinet": edinet_status, "missing_prices": missing_now,
+            "edinet": edinet_status, "tdnet": tdnet_stats, "missing_prices": missing_now,
             "n_edges": G.number_of_edges(), "n_suppliers": len(weights),
             "price_fetched_at": meta.get("fetched_at"), "warnings": warnings,
         },
         "screen": scr,
         "pead": {
             "decile_paths": decile_paths, "conditional_table": cond_table, "best_condition": best,
+            "decile_vol_table": dv_table, "vol_terciles_events": events.attrs.get("vol_terciles"),
             "decile_summary": ls, "regression": reg, "customer_spillover": spill,
         },
         "supply_chain": {

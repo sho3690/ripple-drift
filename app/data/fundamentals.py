@@ -80,20 +80,28 @@ def _f(v):
         return None
 
 
+EMPTY_TTL_HOURS = 72   # 「決算データなし」の結果は 3 日だけ記憶する（毎回の再取得を避けつつ、復旧も拾う）
+
+
 def load_earnings(symbol: str, force: bool = False) -> pd.DataFrame:
     path = EARN_DIR / f"{symbol}.json"
     ttl = timedelta(hours=config.EARNINGS_CACHE_TTL_HOURS)
-    if not force and _fresh(path, ttl):
-        rows = json.loads(path.read_text())["rows"]
+    cached = None
+    if path.exists():
+        try:
+            cached = json.loads(path.read_text())
+        except Exception:
+            cached = None
+    fresh_ok = cached is not None and (
+        (cached["rows"] and _fresh(path, ttl)) or (not cached["rows"] and _fresh(path, timedelta(hours=EMPTY_TTL_HOURS))))
+    if not force and fresh_ok:
+        rows = cached["rows"]
     else:
         rows = _fetch_earnings(symbol)
-        if rows:   # 空（取得失敗・制限）は保存せず、次回に再取得する
+        if rows or cached is None or not cached.get("rows"):
             path.write_text(json.dumps({"fetched_at": datetime.now().isoformat(), "rows": rows}, ensure_ascii=False))
-        elif path.exists():
-            try:
-                rows = json.loads(path.read_text())["rows"]   # 期限切れでも前回分があれば使う
-            except Exception:
-                rows = []
+        else:
+            rows = cached["rows"]   # 取得失敗時は前回の有効データを使う
     df = pd.DataFrame(rows, columns=["announced_jst", "date", "after_close", "eps_estimate", "eps_actual", "surprise_pct"])
     if df.empty:
         return df

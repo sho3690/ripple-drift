@@ -92,15 +92,22 @@ function effectiveRows() { const rows = state.data.screen.rows; return state.exc
 function candidateRows() { return effectiveRows().slice(0, state.data.screen.n_top); }
 function candidateSet() { return new Set(candidateRows().map(r => r.symbol)); }
 const isFresh = r => !r.rings.A.available || !isNum(r.rings.A.days_since) || r.rings.A.days_since <= 45;
-function pickOne(cands) {
-  if (!cands.length) return null;
-  const key = r => { const c = r.composite.closed || []; return [r.composite.all_closed ? 1 : 0, c.length, c.includes("A") ? 1 : 0, isFresh(r) ? 1 : 0, r.composite.score, r.vol60 || 0]; };
-  return cands.slice().sort((a, b) => { const ka = key(a), kb = key(b); for (let i = 0; i < ka.length; i++) { if (kb[i] !== ka[i]) return kb[i] - ka[i]; } return 0; })[0];
+const hasExp = r => r.expected && isNum(r.expected.score);
+function rankedPool() {
+  // 候補（合成スコア上位5%）に、期待値スコア上位20を加えたプールから、鮮度条件を満たすものを効率順に並べる
+  const rows = effectiveRows();
+  const topExp = rows.filter(hasExp).sort((a, b) => b.expected.score - a.expected.score).slice(0, 20);
+  const pool = new Map(); candidateRows().forEach(r => pool.set(r.symbol, r)); topExp.forEach(r => pool.set(r.symbol, r));
+  return Array.from(pool.values()).filter(r => isFresh(r) && hasExp(r))
+    .sort((a, b) => (b.expected.score - a.expected.score) || (b.composite.score - a.composite.score));
 }
+function pickOne(cands) { const ranked = rankedPool(); return ranked.length ? ranked[0] : (cands.length ? cands[0] : null); }
 function verdictOf(r) {
   const n = (r.composite.closed || []).length; const fresh = isFresh(r);
+  const ex = r.expected; const posExp = ex && isNum(ex.drift_remaining) && ex.drift_remaining > 0.003;
+  if (!posExp) return { cls: "gray", text: "見送り推奨（期待ドリフトが小さい）", level: 0 };
   if (n >= 2 && fresh) return { cls: "up", text: "ルール適合（買い候補）", level: 2 };
-  if (n === 1 && fresh) return { cls: "flat", text: "補助的（ルール上は見送り目安）", level: 1 };
+  if (n === 1 && fresh) return { cls: "flat", text: "補助的（1つ点灯・期待値はプラス）", level: 1 };
   return { cls: "gray", text: "見送り推奨", level: 0 };
 }
 const volPill = r => r.move_label ? `<span class="pill ${r.move_label === "大" ? "warn" : "gray"} vol-pill">値動き ${r.move_label}${isNum(r.vol60) ? ` ${Math.round(r.vol60 * 100)}%` : ""}</span>` : "";
@@ -240,10 +247,18 @@ function renderPick(d) {
   const nextE = r.next_earnings ? toDate(r.next_earnings) : null; const inside = nextE && nextE <= review;
   const chg = monthChange(r.sparkline);
   const stop = isNum(r.stop_pct) ? r.stop_pct : 0.08; const stopPrice = isNum(r.price) ? r.price * (1 - stop) : null;
-  const reasons = r.why.slice(0, 3);
-  reasons.push(`値動きの大きさは「${r.move_label || "—"}」（年率ボラ ${isNum(r.vol60) ? Math.round(r.vol60 * 100) + "%" : "—"}）、売買代金 ${turnoverText(r.turnover)}。${r.move_label === "大" ? "上下ともに動きやすいので、損切り幅を必ず決めてください。" : r.move_label === "小" ? "値動きが小さいので、期待できる幅も控えめです。" : ""}`);
+  const ex = r.expected; const lab = { 1: "弱い", 2: "ふつう", 3: "強い" };
+  const reasons = [];
+  if (ex) reasons.push(`過去データで同じ条件（${esc(ex.basis)}）だった ${ex.n.toLocaleString()} 件の決算は、60営業日で平均 ${pct(ex.drift_base)}${isNum(ex.t) ? `（t値 ${ex.t}）` : ""}、勝率 ${Math.round(ex.hit_rate * 100)}% でした。${ex.text_note ? ex.text_note + "。" : ""}決算から ${Math.max(0, 60 - ex.remaining_days)} 営業日たっているので、残りの期待ドリフトは ${pct(ex.drift_remaining)} と見積もります。`);
+  reasons.push(...r.why.slice(0, 2));
+  reasons.push(`値動きの大きさは「${r.move_label || "—"}」（年率ボラ ${isNum(r.vol60) ? Math.round(r.vol60 * 100) + "%" : "—"}、60営業日で ±${ex && isNum(ex.sigma_h) ? Math.round(ex.sigma_h * 100) : "—"}%）、売買代金 ${turnoverText(r.turnover)}。${r.move_label === "大" ? "上下ともに動きやすいので、損切り幅を必ず決めてください。" : r.move_label === "小" ? "値動きが小さいので、期待できる幅も控えめです。" : ""}`);
   const cautions = r.risks.slice(0, 2);
   if (inside) cautions.push(`保有中の ${fmtMD(nextE)} に決算があります。発表前日までに続けるか決めてください。`);
+  if (ex && ex.n < 60) cautions.push(`同条件の過去データが ${ex.n} 件と少なく、期待値の信頼度は低めです。`);
+  if (ex && ex.drift_remaining < 0.005) cautions.push(`残りの期待ドリフトが ${pct(ex.drift_remaining)} と小さく、手数料や値動きに埋もれる可能性があります。`);
+  const ranked = rankedPool(); const alt = ranked.slice(0, 5);
+  const cmpRows = alt.map((x, i) => { const e = x.expected; const c = (x.composite.closed || []).length; const ne2 = x.next_earnings ? toDate(x.next_earnings) : null;
+    return `<tr class="${x.symbol === r.symbol ? "is-candidate" : ""}"><td class="num muted">${i + 1}</td><td><strong>${esc(x.name)}</strong> <span class="small muted">${esc(x.code)}</span></td><td class="r num">${pct(e.score, 2)}</td><td class="r num">${pct(e.drift_base, 2)}</td><td class="r small">${x.move_label || "—"} ±${Math.round((e.sigma_h || 0) * 100)}%</td><td class="r num">${Math.round((e.hit_rate || 0) * 100)}%<span class="muted small"> n=${e.n}</span></td><td class="r">${c}つ</td><td class="r small">${ne2 ? fmtMD(ne2) : "—"}</td></tr>`; }).join("");
   el.innerHTML = `
     <div class="pick-top">
       <div>
@@ -266,6 +281,8 @@ function renderPick(d) {
         <div class="row-kv"><b>次の決算</b><span>${nextE ? `${fmtDate(nextE)}${inside ? " ・ 保有中に到来" : ""}` : "未定"}</span></div>
       </div>
     </div>
+    ${ex ? `<div class="pick-axis"><div class="axis-item"><div class="k">期待ドリフト（残り${ex.remaining_days}営業日分）</div><div class="v ${ex.drift_remaining >= 0 ? "up" : "down"}">${pct(ex.drift_remaining)}</div></div><div class="axis-item"><div class="k">想定変動（60営業日）</div><div class="v">±${Math.round((ex.sigma_h || 0) * 100)}%</div></div><div class="axis-item"><div class="k">選定スコア（残り期待${ex.penalties.length ? "×減点" : ""}）</div><div class="v ${ex.score >= 0 ? "up" : "down"}">${pct(ex.score, 2)}</div></div><div class="axis-item"><div class="k">根拠</div><div class="v">${ex.n.toLocaleString()}件 · 勝率 ${Math.round((ex.hit_rate || 0) * 100)}%</div></div></div>${ex.penalties.length ? `<p class="caption">減点: ${esc(ex.penalties.join("、"))}（選定スコアに ${ex.penalties.map(x => x === "保有中に決算" ? "×0.85" : "×0.9").join("・")}）</p>` : ""}` : `<p class="caption">この銘柄は決算サプライズのデータが無いため、期待値は計算していません。</p>`}
+    ${cmpRows ? `<div class="sub-title" style="margin-top:14px">次点との比較（効率順）</div><div class="table-wrap"><table><thead><tr><th>#</th><th>銘柄</th><th class="r">選定スコア</th><th class="r">同条件の平均</th><th class="r">値動き</th><th class="r">勝率</th><th class="r">点灯</th><th class="r">次の決算</th></tr></thead><tbody>${cmpRows}</tbody></table></div><p class="caption">選定スコア = 同条件（サプライズ十分位 × 値動きの大きさ）の過去平均ドリフトを残り期間分に按分し、決算またぎ・薄商いで減点したもの。研究どおり、ドリフトは値動きの大きい銘柄に集中しています。過去平均に基づく目安であり、個別銘柄の予測ではありません。</p>` : ""}
     <div class="pick-actions"><button class="btn btn-primary btn-sm" type="button" id="pick-open">この銘柄の詳細を開く</button><span class="small muted">${v.level === 2 ? "ルールに合う銘柄です。それでも最終判断はご自身で。" : v.level === 1 ? "点灯が1つだけなので、研究上の裏づけは弱めです。少額か見送りが無難です。" : "ルール上は見送りです。参考としてのみ表示しています。"}</span></div>`;
   animateRings(el);
   $("#pick-open").onclick = () => { const btn = $(`.crow[data-symbol="${r.symbol}"]`); if (btn && btn.getAttribute("aria-expanded") !== "true") toggleRow(r.symbol); setTimeout(() => window.scrollTo({ top: $(`#item-${r.code}`).getBoundingClientRect().top + window.scrollY - 76, behavior: "smooth" }), 60); };

@@ -353,3 +353,11 @@ tr.is-candidate td:first-child { border-left: 3px solid var(--navy); padding-lef
 /* ---- テーマ切替ボタン ---- */
 .icon-btn .ico-sun, .icon-btn .ico-moon, .icon-btn .ico-auto { display: none; }
 .icon-btn[data-mode="light"] .ico-sun, .icon-btn[data-mode="dark"] .ico-moon, .icon-btn[data-mode="auto"] .ico-auto { display: block; }
+
+/* ---- ピックの選定軸 ---- */
+.pick-axis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 16px; }
+.axis-item { padding: 10px 12px; border-radius: var(--r-sm); background: var(--kv-bg); border: 1px solid var(--line); }
+.axis-item .k { font-size: 11.5px; color: var(--muted); font-weight: 600; }
+.axis-item .v { font-family: var(--mono); font-size: 20px; font-weight: 700; color: var(--navy-deep); margin-top: 2px; }
+.axis-item .v.up { color: var(--up); } .axis-item .v.down { color: var(--down); }
+@media (max-width: 700px) { .pick-axis { grid-template-columns: repeat(2, 1fr); } }

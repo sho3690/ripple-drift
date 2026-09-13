@@ -10,7 +10,7 @@ on:
     paths: ["app/**", "web/**", "scripts/**", "data/transcripts/**", ".github/workflows/pages.yml", "requirements.txt"]
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -46,8 +46,19 @@ jobs:
           restore-keys: |
             ripple-cache-
 
-      - name: Run pipeline
+      - name: Run pipeline (yfinance + TDnet 決算短信 + EDINET)
         run: python -m app.pipeline
+
+      - name: Commit collected texts back to the repo（蓄積。[skip ci] で再実行を防ぐ）
+        run: |
+          git config user.name "ripple-drift-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/transcripts app/data/jp_names.json
+          if ! git diff --cached --quiet; then
+            git commit -m "auto: 決算短信テキストと社名リストを更新 [skip ci]"
+            git pull --rebase origin main || true
+            git push
+          fi
 
       - name: Build static site
         run: python scripts/build_site.py

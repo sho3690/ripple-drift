@@ -78,6 +78,7 @@ def ring_a_scores(events: pd.DataFrame, screened: list[str]) -> dict[str, dict]:
             "eps_estimate": _num(r.get("eps_estimate")), "eps_actual": _num(r.get("eps_actual")),
             "surprise_pct": _num(r.get("surprise_pct")), "sue_analyst": _num(r.get("sue_analyst")),
             "sue_srw": _num(r.get("sue_srw")), "sue_decile": _num(r.get("sue_decile")),
+            "sue_tercile": _num(r.get("sue_tercile")), "txt_tercile": _num(r.get("txt_tercile")), "sue_txt": _num(r.get("sue_txt")),
             "reaction_0_1": _num(r.get("reaction_0_1")),
             "car_path": r.get("car_path") if isinstance(r.get("car_path"), list) else None,
             "reason": (note or "") if fresh > 0 else "直近の決算から60営業日以上経過（効果は薄れています）",
@@ -272,3 +273,115 @@ def build_screen(prices: pd.DataFrame, adj_daily: pd.DataFrame, events: pd.DataF
             "ring_labels": RING_LABELS, "ring_weights": RING_WEIGHTS,
             "close_threshold": config.RING_CLOSE_THRESHOLD, "spark_top_n": config.SPARK_TOP_N,
             "vol_terciles": [q1, q2]}
+
+
+# ---------------------------------------------------------------------------
+# 「ひとつ買うなら」の選定軸: 期待ドリフト ÷ 想定変動
+#   E[CAR60 | cell] を条件表（SUE 三分位 × 語り口三分位）から取り、セルの n が小さいときは
+#   同じ SUE 三分位の行平均へ縮小推定（Bayesian shrinkage, k=30）。
+#   残り期間 = (60 − 経過営業日) / 60 で按分し、想定変動 σ_60d = vol60 × √(60/250) で割る。
+#   決算またぎ・薄商いは減点。研究上のドリフトはポートフォリオ平均なので、個別銘柄では
+#   「期待値の目安」であって予測ではない、と UI で明示する。
+# ---------------------------------------------------------------------------
+SHRINK_K = 100                 # 語り口セルの上乗せに使う縮小推定の強さ
+TEXT_CELL_MIN_N = 20
+TEXT_CELL_MIN_T = 1.5
+TEXT_TILT = 0.3                # 検証前の語り口の傾き（土台 × TEXT_TILT × SUE.txt、最大 ±30%）
+BASE_CELL_MIN_N = 100
+EARNINGS_INSIDE_PENALTY = 0.85
+THIN_TURNOVER = 3e8
+THIN_PENALTY = 0.9
+VOL_LABEL = {1: "小", 2: "中", 3: "大"}
+TERCILE_LABEL = {1: "弱い", 2: "ふつう", 3: "強い"}
+
+
+def _vol_tercile_of(vol60: float | None, thresholds) -> int | None:
+    if vol60 is None or not thresholds or thresholds[0] is None:
+        return None
+    return 1 if vol60 < thresholds[0] else 2 if vol60 < thresholds[1] else 3
+
+
+def attach_expectations(scr: dict, cond_table: list[dict], decile_vol_table: list[dict] | None = None,
+                        vol_thresholds=None, as_of: str | None = None) -> dict:
+    """期待ドリフトの推定。
+
+    土台   : E0 = 平均 CAR60 [SUE 十分位 × ボラ三分位]（n ≥ 100）、無ければ十分位全体、無ければ SUE 三分位。
+             （Mendenhall 2004: 裁定リスク＝ボラが高い銘柄ほどドリフトが大きい、を実測で反映）
+    上乗せ : 語り口セル（SUE 三分位 × SUE.txt 三分位）が n ≥ 20 かつ |t| ≥ 1.5 のときのみ、
+             同 SUE 三分位の行平均との差分 Δ を n/(n+100) で縮小して加える。
+    残り   : (60 − 経過営業日)/60 で按分。減点: 保有中に決算 ×0.85、売買代金 3 億円/日未満 ×0.9。
+    score  : 残り期待ドリフト × 減点（= 選定の主軸）。ratio = 残り期待 ÷ σ_60d は参考表示。
+    """
+    by_txt = {(r["sue_tercile"], r["txt_tercile"]): r for r in cond_table}
+    by_dv = {(r["sue_decile"], r["vol_tercile"]): r for r in (decile_vol_table or [])}
+    H = config.CAR_HORIZON
+    for row in scr["rows"]:
+        A = row["rings"]["A"]
+        if not A.get("available") or A.get("sue_tercile") is None:
+            row["expected"] = None
+            continue
+        st = int(A["sue_tercile"])
+        dec = int(A["sue_decile"]) if A.get("sue_decile") is not None else None
+        vt = _vol_tercile_of(row.get("vol60"), vol_thresholds)
+        base, basis = None, ""
+        if dec is not None and vt is not None and (dec, vt) in by_dv and by_dv[(dec, vt)]["n"] >= BASE_CELL_MIN_N:
+            base = by_dv[(dec, vt)]; basis = f"サプライズ十分位{dec}（上位{(11 - dec) * 10}%）× 値動き「{VOL_LABEL[vt]}」"
+        elif dec is not None and (dec, None) in by_dv and by_dv[(dec, None)]["n"] >= BASE_CELL_MIN_N:
+            base = by_dv[(dec, None)]; basis = f"サプライズ十分位{dec}（上位{(11 - dec) * 10}%）"
+        elif (st, None) in by_txt and by_txt[(st, None)].get("mean_car") is not None:
+            base = by_txt[(st, None)]; basis = f"サプライズ「{TERCILE_LABEL[st]}」"
+        if not base or base.get("mean_car") is None:
+            row["expected"] = None
+            continue
+        mean, hit, n_used = float(base["mean_car"]), float(base.get("hit_rate") or 0), int(base["n"])
+        # 語り口の上乗せ（検証を通ったセルのみ）
+        tt = int(A["txt_tercile"]) if A.get("txt_tercile") is not None else None
+        text_adj, text_note = 0.0, ""
+        cell = by_txt.get((st, tt)) if tt is not None else None
+        rowc = by_txt.get((st, None))
+        if cell and rowc and cell.get("mean_car") is not None and rowc.get("mean_car") is not None \
+                and cell["n"] >= TEXT_CELL_MIN_N and abs(cell.get("t") or 0) >= TEXT_CELL_MIN_T:
+            delta = float(cell["mean_car"] - rowc["mean_car"])
+            text_adj = delta * cell["n"] / (cell["n"] + SHRINK_K)
+            text_note = f"語り口「{TERCILE_LABEL[tt]}」の上乗せ {text_adj * 100:+.2f}%（{cell['n']} 件, t={cell['t']}）"
+        else:
+            # 検証済みセルが無い間は、論文（Meursault et al. 2023）の知見に基づく傾きとして SUE.txt を反映
+            stxt = A.get("sue_txt")
+            if stxt is None and row["rings"]["B"].get("available"):
+                stxt = row["rings"]["B"].get("sue_txt")
+            if stxt is not None and mean != 0:
+                text_adj = mean * TEXT_TILT * float(stxt)
+                text_note = (f"経営陣の自信（SUE.txt {float(stxt):+.2f}）による傾き {text_adj * 100:+.2f}%"
+                             f"（論文の知見を反映。本データでの検証は件数待ち）")
+            elif tt is not None:
+                text_note = f"語り口「{TERCILE_LABEL[tt]}」の効果は、まだ件数が足りず期待値に加えていません"
+        mean_total = mean + text_adj
+        days = A.get("days_since") or 0
+        elapsed = max(0, days - config.CAR_START_OFFSET)
+        remaining_frac = max(0.0, (H - elapsed) / H)
+        drift_remaining = mean_total * remaining_frac
+        vol60 = row.get("vol60")
+        sigma_h = (vol60 * math.sqrt(H / 250.0)) if vol60 else None
+        ratio = (drift_remaining / sigma_h) if sigma_h and sigma_h > 0 else None
+        factors, notes = 1.0, []
+        remaining_days = int(round(H * remaining_frac))
+        ne = row.get("next_earnings")
+        if ne and as_of:
+            try:
+                gap = (pd.Timestamp(ne) - pd.Timestamp(as_of)).days
+                if 0 <= gap <= remaining_days * 1.45:
+                    factors *= EARNINGS_INSIDE_PENALTY; notes.append("保有中に決算")
+            except Exception:
+                pass
+        if row.get("turnover") is not None and row["turnover"] < THIN_TURNOVER:
+            factors *= THIN_PENALTY; notes.append("売買代金が薄い")
+        row["expected"] = {
+            "drift_full": round(mean_total, 5), "drift_base": round(mean, 5), "text_adj": round(text_adj, 5),
+            "drift_remaining": round(float(drift_remaining), 5), "remaining_days": remaining_days,
+            "sigma_h": None if sigma_h is None else round(float(sigma_h), 5),
+            "ratio": None if ratio is None else round(float(ratio), 4),
+            "score": round(float(drift_remaining * factors), 5),
+            "hit_rate": round(hit, 4), "n": n_used, "basis": basis, "text_note": text_note,
+            "t": base.get("t"), "sue_tercile": st, "txt_tercile": tt, "sue_decile": dec, "vol_tercile": vt, "penalties": notes,
+        }
+    return scr

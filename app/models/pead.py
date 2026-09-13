@@ -19,6 +19,10 @@ import pandas as pd
 from .. import config
 
 
+MAX_DAILY_ABS = 0.6     # 60 営業日窓の中で 1 日 60% 超の市場調整リターンはデータ不良とみなす
+CAR_WINSOR = 0.6        # CAR60 の打ち切り幅（±60%）
+
+
 def compute_car(ev: pd.DataFrame, adj_returns: pd.DataFrame,
                 start: int = config.CAR_START_OFFSET, horizon: int = config.CAR_HORIZON,
                 short_h: int = config.CAR_SHORT_HORIZON) -> pd.DataFrame:
@@ -40,11 +44,16 @@ def compute_car(ev: pd.DataFrame, adj_returns: pd.DataFrame,
             continue
         pos = s.index.get_loc(d0)
         window = s.iloc[pos + start: pos + start + horizon]
+        # データ不良対策: 窓内に |日次リターン| > MAX_DAILY_ABS があれば無効（未調整の分割・誤データ）
+        if (window.abs() > MAX_DAILY_ABS).any() or (s.iloc[max(0, pos - 1): pos + 2].abs() > MAX_DAILY_ABS).any():
+            paths.append(None); car_h.append(np.nan); car_s.append(np.nan); react.append(np.nan); complete.append(False)
+            days_elapsed.append(int(len(s) - pos - 1))
+            continue
         path = np.cumsum(window.to_numpy())
         n = len(path)
         paths.append([round(float(x), 5) for x in path])
-        car_h.append(float(path[-1]) if n >= horizon else np.nan)
-        car_s.append(float(path[short_h - 1]) if n >= short_h else np.nan)
+        car_h.append(float(np.clip(path[-1], -CAR_WINSOR, CAR_WINSOR)) if n >= horizon else np.nan)
+        car_s.append(float(np.clip(path[short_h - 1], -CAR_WINSOR, CAR_WINSOR)) if n >= short_h else np.nan)
         react.append(float(s.iloc[pos: pos + 2].sum()) if pos + 2 <= len(s) else np.nan)
         complete.append(n >= horizon)
         days_elapsed.append(int(len(s) - pos - 1))
@@ -202,3 +211,49 @@ def customer_surprise_spillover(ev: pd.DataFrame, weights: dict[str, dict[str, f
         "beta_own_sue": {"b": round(float(res.params[2]), 5), "t": round(float(res.tvalues[2]), 2)},
         "r2": round(float(res.rsquared), 4),
     }
+
+
+def add_pre_event_vol(ev: pd.DataFrame, daily: pd.DataFrame, window: int = 60) -> pd.DataFrame:
+    """イベント直前 window 営業日の年率ボラ（Mendenhall 2004: 裁定リスクが高いほどドリフトが大きい）。"""
+    ev = ev.copy()
+    out = np.full(len(ev), np.nan)
+    cache: dict[str, pd.Series] = {}
+    for i, (idx, r) in enumerate(ev.iterrows()):
+        sym, d0 = r["symbol"], r["day0"]
+        if sym not in daily.columns or pd.isna(d0):
+            continue
+        s = cache.get(sym)
+        if s is None:
+            s = daily[sym].dropna(); cache[sym] = s
+        if d0 not in s.index:
+            continue
+        pos = s.index.get_loc(d0)
+        if pos < window // 2:
+            continue
+        w = s.iloc[max(0, pos - window): pos]
+        out[i] = float(w.std(ddof=1) * np.sqrt(250))
+    ev["vol_pre"] = out
+    q = ev["vol_pre"].dropna()
+    if len(q) >= 30:
+        t1, t2 = q.quantile(1 / 3), q.quantile(2 / 3)
+        ev["vol_tercile"] = np.where(ev["vol_pre"].isna(), np.nan, np.where(ev["vol_pre"] < t1, 1, np.where(ev["vol_pre"] < t2, 2, 3)))
+        ev.attrs["vol_terciles"] = [float(t1), float(t2)]
+    else:
+        ev["vol_tercile"] = np.nan
+        ev.attrs["vol_terciles"] = [None, None]
+    return ev
+
+
+def decile_vol_table(ev: pd.DataFrame, car_col: str = f"car{config.CAR_HORIZON}") -> list[dict]:
+    """SUE 十分位 × ボラ三分位 の平均 CAR60・勝率・n・t。"""
+    rows = []
+    sub = ev.dropna(subset=["sue_decile", car_col])
+    for d in range(1, 11):
+        for v in (None, 1, 2, 3):
+            cell = sub[sub["sue_decile"] == d] if v is None else sub[(sub["sue_decile"] == d) & (sub["vol_tercile"] == v)]
+            n = int(len(cell)); car = cell[car_col]
+            rows.append({"sue_decile": d, "vol_tercile": v, "n": n,
+                         "mean_car": None if n == 0 else round(float(car.mean()), 5),
+                         "hit_rate": None if n == 0 else round(float((car > 0).mean()), 4),
+                         "t": None if n < 3 or car.std(ddof=1) == 0 else round(float(car.mean() / (car.std(ddof=1) / np.sqrt(n))), 2)})
+    return rows

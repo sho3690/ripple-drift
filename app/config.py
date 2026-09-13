@@ -43,6 +43,10 @@ EDINET_ALL = os.environ.get("RIPPLE_EDINET_ALL", "0") == "1"        # 1 なら�
 SPARK_TOP_N = 80                                                     # スパークライン・CAR 経路を付ける上位件数
 VOL_DAYS = 60
 
+# ---- TDnet（決算短信の定性的情報） ----
+TDNET_ENABLED = os.environ.get("RIPPLE_NO_TDNET", "0") != "1"
+TDNET_DAYS_BACK = int(os.environ.get("RIPPLE_TDNET_DAYS", "40"))
+
 # ---- イベントスタディ（PEAD） ----
 CAR_START_OFFSET = 2                # 発表日 t0 からの開始オフセット（営業日）
 CAR_HORIZON = 60                    # ドリフト計測期間（営業日）
