@@ -87,7 +87,13 @@ def load_earnings(symbol: str, force: bool = False) -> pd.DataFrame:
         rows = json.loads(path.read_text())["rows"]
     else:
         rows = _fetch_earnings(symbol)
-        path.write_text(json.dumps({"fetched_at": datetime.now().isoformat(), "rows": rows}, ensure_ascii=False))
+        if rows:   # 空（取得失敗・制限）は保存せず、次回に再取得する
+            path.write_text(json.dumps({"fetched_at": datetime.now().isoformat(), "rows": rows}, ensure_ascii=False))
+        elif path.exists():
+            try:
+                rows = json.loads(path.read_text())["rows"]   # 期限切れでも前回分があれば使う
+            except Exception:
+                rows = []
     df = pd.DataFrame(rows, columns=["announced_jst", "date", "after_close", "eps_estimate", "eps_actual", "surprise_pct"])
     if df.empty:
         return df

@@ -253,9 +253,18 @@ def extract_mda_text(csv_text: str, max_chars: int = 12000) -> str:
 
 
 # ---- 日本語社名（提出者リスト） ----
+BUNDLED_NAMES = Path(__file__).resolve().parent / "jp_names.json"
+
+
 def filer_name_map() -> dict[str, str]:
-    """キャッシュ済みの書類一覧（documents.json）から secCode → 提出者名（日本語）を作る。"""
+    """secCode → 提出者名（日本語）。同梱ファイルを土台に、キャッシュ済みの書類一覧で上書き・追記し、
+    増えていれば同梱ファイルも更新する（公開版など EDINET キーの無い環境でも日本語名が出るように）。"""
     names: dict[str, str] = {}
+    try:
+        names.update(json.loads(BUNDLED_NAMES.read_text(encoding="utf-8")))
+    except Exception:
+        pass
+    before = len(names)
     for f in sorted(EDINET_CACHE.glob("list_*.json")):
         try:
             data = json.loads(f.read_text())
@@ -265,6 +274,11 @@ def filer_name_map() -> dict[str, str]:
             sc, fn = d.get("secCode"), d.get("filerName")
             if sc and fn and len(str(sc)) == 5:
                 names[f"{str(sc)[:4]}.T"] = fn
+    if len(names) > before:
+        try:
+            BUNDLED_NAMES.write_text(json.dumps(dict(sorted(names.items())), ensure_ascii=False, indent=0), encoding="utf-8")
+        except Exception:
+            pass
     return names
 
 
