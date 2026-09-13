@@ -173,12 +173,14 @@ def plain_reasons(sym: str, a: dict, b: dict, c: dict, comp: dict) -> tuple[list
     if a.get("available"):
         sp = a.get("surprise_pct")
         rank = a.get("sue_rank", 0.5)
+        # アナリスト予想が無い銘柄（季節ランダムウォーク基準）は予想比が None
+        sp_txt = f"予想比 {sp:+.1f}%" if sp is not None else "前年同期比のサプライズ（アナリスト予想なし）"
         if a["score"] >= config.RING_CLOSE_THRESHOLD:
             why.append(f"{a['event_date']}の決算で、利益が事前の予想を{'大きく' if (sp or 0) > 15 else ''}上回りました"
-                       f"（予想比 {sp:+.1f}%、同時期の銘柄の中で上位{max(1, int(round((1 - rank) * 100)))}%）。"
+                       f"（{sp_txt}、同時期の銘柄の中で上位{max(1, int(round((1 - rank) * 100)))}%）。"
                        "研究では、こうした『良い驚き』の後は株価がじわじわ上がり続ける傾向があります。")
         elif a["score"] <= 100 - config.RING_CLOSE_THRESHOLD:
-            risks.append(f"直近の決算は予想を下回りました（予想比 {sp:+.1f}%）。ドリフトは下向きになりやすい局面です。")
+            risks.append(f"直近の決算は予想を下回りました（{sp_txt}）。ドリフトは下向きになりやすい局面です。")
         if a.get("freshness", 1) < 0.35 and a.get("days_since"):
             risks.append(f"決算から{a['days_since']}営業日経過。サプライズの効果は薄れつつあります。")
     else:
