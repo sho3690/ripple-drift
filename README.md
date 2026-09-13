@@ -4,7 +4,19 @@
 
 > 投資助言ではありません。学術研究で報告された統計的な傾向を、過去データで機械的に再現したものです。
 
-## はじめかた（1コマンド）
+## 公開版（GitHub Pages）
+
+https://sho3690.github.io/ripple-drift/
+
+GitHub Actions が平日の朝 7:30 ごろ（JST）に前営業日の終値で計算し直して公開します。公開版はサーバーが無いため、「データを更新」ボタンとテキスト登録フォームは使えません。テキストは `data/transcripts/` にファイルを置いて push してください（次回の自動更新で反映）。手動で今すぐ更新したいときは、GitHub の Actions タブから「Build and deploy to GitHub Pages」を Run workflow するか、ローカル版を使います。
+
+EDINET 連携を公開版でも使うには、リポジトリの Secrets に `EDINET_FSA_KEY` を登録します。
+
+```bash
+gh secret set EDINET_FSA_KEY -R sho3690/ripple-drift < ~/cre-scout/tools/edinet_key_fsa.txt
+```
+
+## はじめかた（1コマンド・ローカル版）
 
 ```bash
 cd ~/ripple-drift
