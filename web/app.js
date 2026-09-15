@@ -198,11 +198,11 @@ function renderActions(d) {
       side: state.isStatic ? `<span class="pill ${stale <= 3 ? "up" : "warn"}">${stale <= 3 ? "自動更新" : "要確認"}</span>` : updatedToday ? `<span class="pill up">完了</span>` : `<button class="btn btn-primary btn-sm" data-act="refresh" type="button">いま更新する</button>` },
     { title: "候補を確認する", when: "更新のあと",
       body: `候補は <b>${cands.length} 件</b>（3つ点灯 ${closed3.length}、2つ点灯 ${closed2.length}、1つ点灯 ${closed1.length}）。${closed3.length ? `<b>${names(closed3)}</b> は3つすべて点灯しています。` : "今日は3つ点灯の銘柄はありません。"}`,
-      side: `<button class="btn btn-sm" data-act="go-candidates" type="button">候補へ</button>` },
+      side: `<button class="btn btn-tonal btn-sm" data-act="go-candidates" type="button">候補へ</button>` },
     { title: "決算説明のテキストを登録する", when: "決算発表の直後（5月・8月・11月・2月）",
       body: textMissing.length ? `候補のうち <b>${textMissing.length}/${cands.length} 件</b>が未登録（${names(textMissing.slice(0, 4))}${textMissing.length > 4 ? " ほか" : ""}）。${state.isStatic ? "GitHub のリポジトリの <b>data/transcripts/&lt;コード&gt;.T/&lt;発表日&gt;.txt</b> にテキストを置いて push すると、次回の自動更新で「経営陣の自信」が計算されます。" : "決算説明会の質疑応答や決算短信の説明文を貼ると「経営陣の自信」が計算され、3つ点灯の判定ができるようになります。"}`
         : `候補 ${cands.length} 件すべてにテキストが登録されています。次の決算後にまた登録してください。`,
-      side: `<button class="btn btn-sm" data-act="go-text" type="button">登録する</button>` },
+      side: `<button class="btn btn-tonal btn-sm" data-act="go-text" type="button">登録する</button>` },
     { title: "入るかどうか決める", when: "候補を確認した日（買うのは翌営業日の寄り付き）",
       body: entry.length ? `ルールの条件（2つ以上点灯・決算から45営業日以内）を満たすのは <b>${names(entry)}</b>。入るなら <b>${fmtDate(nextBusinessDay(today))}</b> の寄り付きが目安。${pick ? `ひとつ選ぶなら <b>${esc(pick.name)}</b>（下のカード）。` : ""}損切り幅を先に決めてください。`
         : `今日は「2つ以上点灯」の銘柄が<b>ありません</b>。ルール上は<b>見送り</b>が目安です。${pick ? `それでも1つ選ぶなら <b>${esc(pick.name)}</b>（下のカードに理由と損切り目安）。` : ""}${consider.length ? `1つ点灯の <b>${names(consider.slice(0, 5))}</b> は補助的な候補です。` : ""}`,
@@ -392,7 +392,7 @@ function detailHTML(r) {
       </div>
       <label for="text-${r.code}">テキスト</label>
       <textarea id="text-${r.code}" placeholder="ここに貼り付け（40文字以上）"></textarea>
-      <div class="form-actions"><button class="btn btn-primary btn-sm" type="button" data-form="save">登録して再計算</button><button class="btn btn-sm" type="button" data-form="try">保存せずに採点だけ試す</button><span class="form-msg" id="msg-${r.code}"></span></div>
+      <div class="form-actions"><button class="btn btn-primary btn-sm" type="button" data-form="save">登録して再計算</button><button class="btn btn-tonal btn-sm" type="button" data-form="try">保存せずに採点だけ試す</button><span class="form-msg" id="msg-${r.code}"></span></div>
     </div>`}`;
 }
 
