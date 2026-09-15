@@ -105,6 +105,9 @@ code { font-family: var(--md-mono); font-size: 12px; background: var(--md-surfac
 /* ---- Top app bar（small, 64px）: スクロールで surface-container に切替、影は使わない ---- */
 .topbar { position: sticky; top: 0; z-index: 20; background: var(--md-surface); transition: background var(--md-dur-short) var(--md-ease-standard); }
 .topbar.scrolled { background: var(--md-surface-container); }
+/* 埋め込みモード（?embed=1、MATRIX QUANT TERMINAL 等の親ページに入るとき）: 親側のヘッダーと重なる自前のヘッダーを隠す */
+html.embed .topbar { display: none; }
+html.embed .page { padding-top: 4px; padding-bottom: 24px; }
 .topbar-inner { max-width: 880px; margin: 0 auto; padding: 0 16px; height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .brand-name { font-size: 22px; line-height: 28px; font-weight: 500; color: var(--md-on-surface); }
 .brand-sub { font-size: 12px; line-height: 16px; letter-spacing: .4px; color: var(--md-on-surface-variant); }

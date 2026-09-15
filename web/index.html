@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>RippleDrift</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Ccircle cx=%2716%27 cy=%2716%27 r=%2711%27 fill=%27none%27 stroke=%27%231f3b6e%27 stroke-width=%275%27 stroke-dasharray=%2752 18%27 stroke-linecap=%27round%27 transform=%27rotate(-90 16 16)%27/%3E%3C/svg%3E">
-<script>(function(){try{var m=new URLSearchParams(location.search).get("theme");if(m){localStorage.setItem("ripple-theme",m);}var t=localStorage.getItem("ripple-theme");if(t==="light"||t==="dark"){document.documentElement.setAttribute("data-theme",t);}}catch(e){}})();</script>
-<link rel="stylesheet" href="static/styles.css?v=8">
+<script>(function(){try{var q=new URLSearchParams(location.search);var m=q.get("theme");if(m){localStorage.setItem("ripple-theme",m);}var t=localStorage.getItem("ripple-theme");if(t==="light"||t==="dark"){document.documentElement.setAttribute("data-theme",t);}if(q.get("embed")==="1"){document.documentElement.classList.add("embed");}}catch(e){}})();</script>
+<link rel="stylesheet" href="static/styles.css?v=9">
 </head>
 <body>
 
@@ -180,6 +180,6 @@ Ring C = 100·(0.6·pct(CM) + 0.4·pct(gap))</div>
 </main>
 
 <script src="static/echarts.min.js"></script>
-<script src="static/app.js?v=10"></script>
+<script src="static/app.js?v=11"></script>
 </body>
 </html>

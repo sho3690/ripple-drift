@@ -651,6 +651,14 @@ const topbar = $("#topbar");
 const onScroll = () => topbar.classList.toggle("scrolled", window.scrollY > 4);
 window.addEventListener("scroll", onScroll, { passive: true }); onScroll();
 
+// ---------- 埋め込みモード（?embed=1）: 親ページ（MATRIX QUANT TERMINAL 等）に自分の高さを知らせ、二重スクロールを避ける ----------
+if (document.documentElement.classList.contains("embed") && window.parent !== window) {
+  const report = () => { try { window.parent.postMessage({ type: "ripple-height", height: document.documentElement.scrollHeight }, "*"); } catch (e) { /* noop */ } };
+  if ("ResizeObserver" in window) new ResizeObserver(report).observe(document.body);
+  window.addEventListener("load", report);
+  setTimeout(report, 1500);
+}
+
 // ---------- 起動 ----------
 (async () => {
   state.isStatic = await detectStatic();
